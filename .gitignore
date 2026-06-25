@@ -1,8 +1,12 @@
 .venv/
+node_modules/
 __pycache__/
 .pytest_cache/
 *.py[cod]
 *.egg-info/
 data/*.jsonl
+data/smoke_test.db
+reports/automation_test.xlsx
+reports/smoke_test/
 !data/.gitkeep
 !reports/.gitkeep

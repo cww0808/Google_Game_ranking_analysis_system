@@ -38,17 +38,22 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - uses: pnpm/action-setup@v4
+        if: steps.window.outputs.enabled == 'true'
+        with:
+          version: "11"
+
       - uses: actions/setup-node@v4
         if: steps.window.outputs.enabled == 'true'
         with:
           node-version: "22"
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
         if: steps.window.outputs.enabled == 'true'
         run: |
           pip install -e .
-          npm ci
+          pnpm install --frozen-lockfile
 
       - name: Define collection ID
         if: steps.window.outputs.enabled == 'true'
