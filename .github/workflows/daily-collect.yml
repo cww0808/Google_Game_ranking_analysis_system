@@ -1,0 +1,97 @@
+name: Collect Google Play rankings and reviews
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 21 * * *" # 06:00 Asia/Seoul (next calendar day)
+    - cron: "0 9 * * *"  # 18:00 Asia/Seoul
+
+permissions:
+  contents: write
+
+concurrency:
+  group: google-play-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check five-day collection window
+        id: window
+        shell: bash
+        run: |
+          KST_DATE=$(TZ=Asia/Seoul date +%F)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || ( "$KST_DATE" > "2026-06-25" && "$KST_DATE" < "2026-07-01" ) ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.window.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        if: steps.window.outputs.enabled == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.window.outputs.enabled == 'true'
+        run: |
+          pip install -e .
+          npm ci
+
+      - name: Define collection ID
+        if: steps.window.outputs.enabled == 'true'
+        shell: bash
+        run: echo "COLLECTION_ID=$(TZ=Asia/Seoul date +%F_%H%M)" >> "$GITHUB_ENV"
+
+      - name: Export Korean free-game Top 100
+        if: steps.window.outputs.enabled == 'true'
+        run: node scripts/export_top100.mjs "data/ranking_${COLLECTION_ID}.csv"
+
+      - name: Collect game details and Markdown report
+        if: steps.window.outputs.enabled == 'true'
+        run: >-
+          googleplay-games
+          --package-file "data/ranking_${COLLECTION_ID}.csv"
+          --date "${COLLECTION_ID}"
+          --delay 0.2
+
+      - name: Collect latest written reviews
+        if: steps.window.outputs.enabled == 'true'
+        run: >-
+          node scripts/collect_reviews.mjs
+          --ranking "data/ranking_${COLLECTION_ID}.csv"
+          --output "data/reviews_${COLLECTION_ID}.jsonl"
+          --reviews-per-game 200
+          --throttle 2
+
+      - name: Import reviews and create Excel workbook
+        if: steps.window.outputs.enabled == 'true'
+        run: |
+          python scripts/import_reviews.py "data/reviews_${COLLECTION_ID}.jsonl"
+          python scripts/export_xlsx.py \
+            --snapshot "${COLLECTION_ID}" \
+            --output "reports/구글플레이_게임리뷰_사용자관계_${COLLECTION_ID}.xlsx"
+          rm "data/reviews_${COLLECTION_ID}.jsonl"
+
+      - name: Commit collected files
+        if: steps.window.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data reports
+          git diff --cached --quiet || git commit -m "data: collect ${COLLECTION_ID}"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
