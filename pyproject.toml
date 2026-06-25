@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "googleplay-game-data-collecting"
+version = "0.1.0"
+description = "Collect and compare Korean Google Play game ranking snapshots."
+requires-python = ">=3.11"
+dependencies = [
+  "google-play-scraper>=1.2.7,<2",
+  "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+googleplay-games = "game_collector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
