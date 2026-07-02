@@ -97,3 +97,63 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_local_sync_task.ps1
 ```
 
 작업은 오전 6시 30분과 오후 6시 30분에 `git pull --ff-only`를 실행합니다.
+
+
+## 분석 기능: 대시보드 / 주간 리포트 / 리뷰 키워드 / 생존력
+
+수집된 `data/google_play_games.db`를 기반으로 네 가지 분석 기능을 제공합니다.
+
+### 1. Streamlit 시장 대시보드
+
+선택 의존성을 설치한 뒤 실행합니다.
+
+```powershell
+pip install -e ".[dashboard]"
+streamlit run dashboard/app.py
+```
+
+대시보드 탭:
+
+- 랭킹 변화: TOP 100, 상승/하락/신규/이탈
+- 게임 상세: 특정 게임의 순위 추이와 최근 리뷰
+- 개발사/장르: 개발사별 게임 수, 장르별 점유율
+- 리뷰 키워드: 주요 키워드와 게임별 이슈 유형
+- 생존력/주간 리포트: 100위권 체류력과 주간 Markdown 리포트 미리보기
+
+### 2. 주간 자동 메타 리포트
+
+```powershell
+python scripts/generate_weekly_report.py
+```
+
+기본 출력:
+
+```text
+reports/weekly_meta_report_latest.md
+```
+
+특정 스냅샷 기준으로 만들려면:
+
+```powershell
+python scripts/generate_weekly_report.py --end-snapshot 2026-07-02_0714 --output reports/weekly_meta_report_2026-07-02_0714.md
+```
+
+### 3. 리뷰 기반 키워드/이슈 분석
+
+`game_collector.insights.review_keyword_summary()`가 다음을 계산합니다.
+
+- 전체 주요 키워드
+- 광고, 과금/결제, 버그/오류, 난이도/밸런스, 조작/UX, 업데이트 이슈
+- 게임별 이슈 건수와 이슈 비율
+- 긍정/부정 후보 리뷰 수
+
+### 4. 게임 생존력 분석
+
+`game_collector.insights.survival_rows()`가 다음 지표를 계산합니다.
+
+- 최초 관측 / 최근 관측
+- TOP 100 관측 횟수
+- 최고 순위 / 최저 순위 / 평균 순위
+- 순위 변동폭
+- 현재 TOP 100 여부
+- 생존력 점수
