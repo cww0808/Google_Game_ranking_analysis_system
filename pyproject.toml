@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9"]
+dashboard = ["streamlit>=1.36,<2", "pandas>=2.2,<3", "kiwipiepy>=0.20,<1"]
 
 [project.scripts]
 googleplay-games = "game_collector.cli:main"

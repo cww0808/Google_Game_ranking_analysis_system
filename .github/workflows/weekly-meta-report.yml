@@ -1,0 +1,51 @@
+name: Generate weekly meta report
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monday 04:00 Asia/Seoul == Sunday 19:00 UTC
+    - cron: "0 19 * * 0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-meta-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install analysis dependencies
+        run: pip install -e ".[dashboard]"
+
+      - name: Define KST report date
+        shell: bash
+        run: echo "REPORT_DATE=$(TZ=Asia/Seoul date +%F)" >> "$GITHUB_ENV"
+
+      - name: Generate weekly meta reports
+        run: |
+          python scripts/generate_weekly_report.py \
+            --output "reports/weekly_meta_report_latest.md"
+          python scripts/generate_weekly_report.py \
+            --output "reports/weekly_meta_report_${REPORT_DATE}.md"
+
+      - name: Commit weekly report files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/weekly_meta_report_latest.md "reports/weekly_meta_report_${REPORT_DATE}.md"
+          git diff --cached --quiet || git commit -m "report: weekly meta ${REPORT_DATE}"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
