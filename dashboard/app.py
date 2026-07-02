@@ -142,12 +142,12 @@ with tab3:
 
 with tab4:
     keyword_rows = pd.DataFrame(data["keywords"]["top_keywords"], columns=["keyword", "count"])
-    issue_rows = pd.DataFrame(data["keywords"]["issue_rows"])
+    issue_rows = pd.DataFrame(data["keywords"]["game_issue_rank_rows"])
     st.subheader("리뷰 주요 키워드")
     st.dataframe(keyword_rows, use_container_width=True, hide_index=True)
     if not keyword_rows.empty:
         st.bar_chart(keyword_rows.head(30).set_index("keyword")["count"])
-    st.subheader("게임별 주요 이슈")
+    st.subheader("게임별 주요 이슈 TOP 3")
     st.dataframe(issue_rows, use_container_width=True, hide_index=True)
 
 with tab5:

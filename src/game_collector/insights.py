@@ -346,9 +346,11 @@ def review_keyword_summary(connection: sqlite3.Connection, limit: int = 50) -> d
                 game_issue_counts[app_id][issue] += 1
 
     issue_rows = []
+    game_issue_rank_rows = []
     for app_id, counter in game_issue_counts.items():
         total = game_review_counts[app_id]
-        for issue, count in counter.items():
+        ranked_issues = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+        for issue, count in ranked_issues:
             issue_rows.append({
                 **game_meta[app_id],
                 "issue": issue,
@@ -356,11 +358,39 @@ def review_keyword_summary(connection: sqlite3.Connection, limit: int = 50) -> d
                 "review_count": total,
                 "issue_rate": round(count / total, 4) if total else 0,
             })
+
+        row = {
+            **game_meta[app_id],
+            "review_count": total,
+            "issue_total": sum(counter.values()),
+        }
+        for index in range(3):
+            rank = index + 1
+            if index < len(ranked_issues):
+                issue, count = ranked_issues[index]
+                row[f"issue_{rank}"] = issue
+                row[f"issue_{rank}_count"] = count
+                row[f"issue_{rank}_rate"] = round(count / total, 4) if total else 0
+            else:
+                row[f"issue_{rank}"] = ""
+                row[f"issue_{rank}_count"] = 0
+                row[f"issue_{rank}_rate"] = 0
+        game_issue_rank_rows.append(row)
+
     issue_rows.sort(key=lambda row: (-row["count"], -row["issue_rate"], row["title"]))
+    game_issue_rank_rows.sort(
+        key=lambda row: (
+            -(row.get("issue_1_count") or 0),
+            -(row.get("issue_2_count") or 0),
+            -(row.get("issue_3_count") or 0),
+            row["title"],
+        )
+    )
 
     return {
         "top_keywords": token_counter.most_common(limit),
         "issue_rows": issue_rows[:limit],
+        "game_issue_rank_rows": game_issue_rank_rows[:limit],
         "positive_reviews": positive_reviews,
         "negative_reviews": negative_reviews,
         "review_count": sum(game_review_counts.values()),
@@ -439,7 +469,7 @@ def build_weekly_report(connection: sqlite3.Connection, days: int = 7, end_snaps
     new_entries = [row for row in movements if row["status"] == "신규"][:20]
     exits = [row for row in movements if row["status"] == "이탈"][:20]
     durable = survival[:15]
-    issue_rows = keywords["issue_rows"][:15]
+    issue_rows = keywords["game_issue_rank_rows"][:15]
     top_keywords = [{"keyword": k, "count": v} for k, v in keywords["top_keywords"][:20]]
 
     lines = [
@@ -483,9 +513,24 @@ def build_weekly_report(connection: sqlite3.Connection, days: int = 7, end_snaps
         "",
         _markdown_table(top_keywords, [("키워드", "keyword"), ("빈도", "count")]),
         "",
-        "## 9. 게임별 주요 이슈",
+        "## 9. 게임별 주요 이슈 TOP 3",
         "",
-        _markdown_table(issue_rows, [("이슈", "issue"), ("건수", "count"), ("비율", "issue_rate"), ("게임", "title")]),
+        _markdown_table(
+            issue_rows,
+            [
+                ("게임", "title"),
+                ("리뷰 수", "review_count"),
+                ("1순위 이슈", "issue_1"),
+                ("1순위 건수", "issue_1_count"),
+                ("1순위 비율", "issue_1_rate"),
+                ("2순위 이슈", "issue_2"),
+                ("2순위 건수", "issue_2_count"),
+                ("2순위 비율", "issue_2_rate"),
+                ("3순위 이슈", "issue_3"),
+                ("3순위 건수", "issue_3_count"),
+                ("3순위 비율", "issue_3_rate"),
+            ],
+        ),
         "",
     ]
     return "\n".join(lines)
