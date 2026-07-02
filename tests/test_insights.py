@@ -56,3 +56,16 @@ def test_review_keyword_summary_detects_issue_keywords(tmp_path):
     issues = {(row["title"], row["issue"]) for row in summary["issue_rows"]}
     assert ("Game A", "광고") in issues
     assert ("Game A", "버그/오류") in issues
+
+
+
+def test_korean_keyword_normalization_merges_particles_and_aliases():
+    from game_collector.insights import _tokens
+
+    tokens = _tokens("광고 광고가 광고를 게임이 게임은 게임을 재밌어요 재미있어요 재밋어요 튕겨요 팅김 오류 에러")
+
+    assert tokens.count("광고") == 3
+    assert "게임" not in tokens
+    assert tokens.count("재미") >= 3
+    assert tokens.count("튕김") >= 2
+    assert tokens.count("버그") >= 2

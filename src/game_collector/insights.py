@@ -3,22 +3,84 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from statistics import mean
 
 
 TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9]{2,}")
+
+try:
+    from kiwipiepy import Kiwi
+except ImportError:  # pragma: no cover - optional fallback for minimal collection environments
+    Kiwi = None
+
+
 STOPWORDS = {
-    "게임", "진짜", "너무", "정말", "그냥", "계속", "하고", "하면", "해서", "근데", "있어요", "합니다",
-    "그리고", "하지만", "이거", "저도", "제가", "없는", "있는", "좋아요", "같아요", "입니다", "ㅋㅋ",
+    "게임", "게임하다", "하다", "되다", "있다", "없다", "이다", "아니다", "같다", "보다",
+    "진짜", "너무", "정말", "그냥", "계속", "그리고", "하지만", "이거", "저도", "제가",
+    "많이", "다시", "다른", "시간", "하는", "했는데", "있는데", "있어서", "있습니다",
+    "아니", "좀", "더", "잘", "왜", "뭐", "때", "수", "것", "거", "듯", "중", "내",
+    "주다", "나오다", "나다", "지다", "않다", "가다", "쓰다", "만들다", "모르다", "말다",
+    "많다", "받다", "싶다", "생각", "정도", "사람", "유저", "플레", "플레이", "해보다",
+    "처음", "이상", "하나", "이것", "때문", "가능", "진행",
     "the", "and", "for", "this", "that", "with", "game", "good", "very",
 }
 
+PARTICLES = (
+    "으로부터", "로부터", "에게서", "한테서", "에서는", "에게는", "한테는",
+    "입니다", "습니다", "어요", "네요", "는데", "지만", "면서", "으면", "려고",
+    "에서", "에게", "한테", "보다", "처럼", "까지", "부터", "으로", "라고", "하고",
+    "은", "는", "이", "가", "을", "를", "에", "의", "도", "만", "와", "과", "로",
+)
+
+ALIASES = {
+    "재밌": "재미",
+    "재밋": "재미",
+    "재밌다": "재미",
+    "재미있": "재미",
+    "재미있다": "재미",
+    "재미없": "노잼",
+    "재미없다": "노잼",
+    "광고": "광고",
+    "애드": "광고",
+    "ads": "광고",
+    "ad": "광고",
+    "현질": "과금",
+    "과금": "과금",
+    "결제": "과금",
+    "유료": "과금",
+    "구매": "과금",
+    "환불": "환불",
+    "가챠": "뽑기",
+    "뽑기": "뽑기",
+    "버그": "버그",
+    "오류": "버그",
+    "에러": "버그",
+    "튕김": "튕김",
+    "튕기": "튕김",
+    "튕기다": "튕김",
+    "튕겨": "튕김",
+    "팅김": "튕김",
+    "렉": "렉",
+    "버벅": "렉",
+    "끊김": "렉",
+    "로딩": "로딩",
+    "접속": "접속",
+    "업데이트": "업데이트",
+    "패치": "업데이트",
+    "너프": "너프",
+    "버프": "버프",
+    "조작": "조작",
+    "터치": "조작",
+    "난이도": "난이도",
+    "밸런스": "밸런스",
+}
+
 ISSUE_KEYWORDS = {
-    "광고": ["광고", "ads", "ad"],
+    "광고": ["광고", "애드", "ads", "ad"],
     "과금/결제": ["과금", "결제", "현질", "유료", "돈", "구매", "환불", "뽑기", "가챠"],
-    "버그/오류": ["버그", "오류", "에러", "렉", "튕김", "튕겨", "멈춤", "먹통", "접속", "로딩", "다운"],
+    "버그/오류": ["버그", "오류", "에러", "렉", "튕김", "튕겨", "팅김", "멈춤", "먹통", "접속", "로딩", "다운"],
     "난이도/밸런스": ["어려", "난이도", "밸런스", "사기", "매칭", "억까", "불가능"],
     "조작/UX": ["조작", "터치", "불편", "UI", "ux", "컨트롤", "화면"],
     "업데이트": ["업데이트", "패치", "너프", "버프", "바뀌", "변경"],
@@ -26,6 +88,50 @@ ISSUE_KEYWORDS = {
 
 POSITIVE_KEYWORDS = ["재밌", "재미", "좋", "추천", "최고", "귀엽", "간단", "만족", "힐링", "중독"]
 NEGATIVE_KEYWORDS = ["별로", "최악", "짜증", "삭제", "싫", "노잼", "불편", "화남", "망겜", "실망"]
+
+
+@lru_cache(maxsize=1)
+def _kiwi():
+    return Kiwi() if Kiwi is not None else None
+
+
+def normalize_token(token: str) -> str | None:
+    token = token.lower().strip()
+    if not token:
+        return None
+    token = ALIASES.get(token, token)
+    if token in STOPWORDS or len(token) < 2 or token.isdigit():
+        return None
+    return token
+
+
+def strip_particle(token: str) -> str:
+    token = token.lower().strip()
+    for particle in sorted(PARTICLES, key=len, reverse=True):
+        if len(token) > len(particle) + 1 and token.endswith(particle):
+            return token[: -len(particle)]
+    return token
+
+
+def _kiwi_tokens(text: str) -> list[str]:
+    kiwi = _kiwi()
+    if kiwi is None:
+        return []
+    normalized: list[str] = []
+    for token in kiwi.tokenize(text):
+        # N*: nouns, V*: predicates, SL/SH/SN: foreign/Hanja/number-like tokens.
+        if not (token.tag.startswith("N") or token.tag.startswith("V") or token.tag in {"SL", "SH"}):
+            continue
+        form = token.form
+        if token.tag.startswith("V"):
+            form = token.lemma or form
+            # 동사는 일반 동사가 너무 많이 올라오므로, 사전에 등록된 감성/이슈 표현만 남긴다.
+            if form not in ALIASES and form not in {"좋다", "싫다", "불편하다", "어렵다"}:
+                continue
+        value = normalize_token(strip_particle(form))
+        if value:
+            normalized.append(value)
+    return normalized
 
 
 def connect_readonly(db_path: str | Path) -> sqlite3.Connection:
@@ -195,8 +301,15 @@ def survival_rows(connection: sqlite3.Connection) -> list[dict]:
 def _tokens(text: str | None) -> list[str]:
     if not text:
         return []
-    tokens = [token.lower() for token in TOKEN_RE.findall(text)]
-    return [token for token in tokens if token not in STOPWORDS and not token.isdigit()]
+
+    normalized = _kiwi_tokens(text)
+    if not normalized:
+        normalized = []
+        for raw_token in TOKEN_RE.findall(text):
+            value = normalize_token(strip_particle(raw_token))
+            if value:
+                normalized.append(value)
+    return normalized
 
 
 def _contains_any(text: str, keywords: list[str]) -> bool:
