@@ -157,3 +157,16 @@ python scripts/generate_weekly_report.py --end-snapshot 2026-07-02_0714 --output
 - 순위 변동폭
 - 현재 TOP 100 여부
 - 생존력 점수
+
+
+### 주간 리포트 GitHub Actions 자동 생성
+
+`.github/workflows/weekly-meta-report.yml`은 매주 월요일 오전 4시(KST)에 실행됩니다.
+
+- UTC cron: `0 19 * * 0`
+- KST 기준: 매주 월요일 04:00
+- 생성 파일:
+  - `reports/weekly_meta_report_latest.md`
+  - `reports/weekly_meta_report_YYYY-MM-DD.md`
+
+월요일 새벽 4시에 실행되므로, 일요일에서 월요일로 넘어오기 전까지 누적된 최근 1주일 데이터를 기준으로 주간 리포트를 고정 저장합니다.
