@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           KST_DATE=$(TZ=Asia/Seoul date +%F)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || ( "$KST_DATE" > "2026-06-25" && "$KST_DATE" < "2026-08-01" ) ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || ( "$KST_DATE" > "2026-06-25" && "$KST_DATE" < "2026-08-31" ) ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
